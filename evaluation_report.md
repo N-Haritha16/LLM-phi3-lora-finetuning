@@ -1,6 +1,6 @@
 1. Task and Dataset
 
-The goal of this project is to fine‑tune a Phi‑3 family model for instruction‑style question answering on a small, custom text dataset. The dataset consists of user prompts paired with target responses, preprocessed into tokenized sequences suitable for causal language modeling. The data is split into three subsets: a training set used to update the model, a validation set used during development, and a held‑out test set used for final evaluation (all stored under data/processed/train, val, and test).​
+The goal of this project is to fine‑tune a Phi‑3 family model for instruction‑style question answering on a small, custom text dataset. The dataset consists of user prompts paired with target responses, preprocessed into tokenized sequences suitable for causal language modeling. The data is split into three subsets: a training set used to update the model, a validation set used during development, and a held‑out test set used for final evaluation (all stored under data/processed/train, val, and test).
 
 Due to hardware constraints and time limits, the dataset size is modest (on the order of hundreds to a few thousand examples rather than millions), which means the results should be interpreted as a proof‑of‑concept rather than a production‑ready model. This smaller scale is also why intrinsic metrics like loss and perplexity are emphasized over large‑scale benchmark scores.​
 
