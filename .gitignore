@@ -6,4 +6,5 @@ __pycache__/
 data/processed/
 logs/
 outputs/
+!outputs/phi-3/
 wandb/
