@@ -1,0 +1,9 @@
+{"time":"2025-12-11T22:29:34.0041095+05:30","level":"INFO","msg":"main: starting server","port-filename":"C:\\Users\\HARITHA\\AppData\\Local\\Temp\\tmp0h3xi5xn\\port-15412.txt","pid":15412,"log-level":0,"disable-analytics":false,"shutdown-on-parent-exit":false,"enable-dcgm-profiling":false}
+{"time":"2025-12-11T22:29:34.0088976+05:30","level":"INFO","msg":"server: will exit if parent process dies","ppid":15412}
+{"time":"2025-12-11T22:29:34.0088976+05:30","level":"INFO","msg":"server: accepting connections","addr":{"IP":"127.0.0.1","Port":52941,"Zone":""}}
+{"time":"2025-12-11T22:29:34.0088976+05:30","level":"INFO","msg":"server: accepting connections","addr":{"Name":"C:\\Users\\HARITHA\\AppData\\Local\\Temp\\wandb-15412-8440-408420734\\socket","Net":"unix"}}
+{"time":"2025-12-11T22:29:36.2066897+05:30","level":"INFO","msg":"connection: ManageConnectionData: new connection created","id":"1(127.0.0.1:52943)"}
+{"time":"2025-12-11T22:29:36.3071006+05:30","level":"INFO","msg":"handleInformInit: received","streamId":"957rykpo","id":"1(127.0.0.1:52943)"}
+{"time":"2025-12-11T22:29:36.4657925+05:30","level":"INFO","msg":"handleInformInit: stream started","streamId":"957rykpo","id":"1(127.0.0.1:52943)"}
+{"time":"2025-12-11T22:33:47.3099861+05:30","level":"ERROR","msg":"connection: fatal error reading connection","error":"read tcp 127.0.0.1:52941->127.0.0.1:52943: wsarecv: An existing connection was forcibly closed by the remote host.","id":"1(127.0.0.1:52943)"}
+{"time":"2025-12-11T22:38:22.6352333+05:30","level":"INFO","msg":"main: received shutdown signal","signal":15}
