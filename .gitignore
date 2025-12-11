@@ -1,27 +1,9 @@
-# Python
 __pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.so
-
-# Environments
+*.pyc
 .venv/
-env/
-venv/
 .env
-
-# Jupyter
 .ipynb_checkpoints/
-
-# IDE / editor
-.vscode/
-.idea/
-
-# Project data and artifacts (do NOT push)
 data/processed/
 logs/
 outputs/
-
-# WandB and similar logs
 wandb/
