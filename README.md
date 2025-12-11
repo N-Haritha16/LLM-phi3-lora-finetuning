@@ -23,8 +23,8 @@ requirements.txt # Python dependencies
 
 1. Clone the repository:
 
-git clone https://github.com/<your-username>/<your-repo>.git       # later using on different PC
-cd <your-repo>
+git clone https://github.com/<your-username>/<your-repo>.git     # later using on different PC
+ cd <your-repo>
 
 2. Create and activate a virtual environment:
 
