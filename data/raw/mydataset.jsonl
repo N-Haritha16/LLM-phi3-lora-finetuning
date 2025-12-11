@@ -1,0 +1,2 @@
+{"id": "001", "instruction": "Summarize the text below.", "input": "The quick brown fox jumps over ...", "output": "A short summary: fox jumps quickly."}
+{"id": "002", "instruction": "Write an email asking for a meeting.", "input": "", "output": "Hi X, I'd like to schedule a 30-minute meeting to discuss..."}

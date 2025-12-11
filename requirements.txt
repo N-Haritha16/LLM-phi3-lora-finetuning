@@ -1,0 +1,10 @@
+transformers
+datasets
+accelerate
+bitsandbytes
+trl
+peft
+evaluate
+wandb
+pyyaml
+torch

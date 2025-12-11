@@ -1,0 +1,43 @@
+project_name: "llm-lora-finetune"
+output_dir: "outputs/phi-3"
+seed: 42
+
+data:
+  dataset_path: "data/raw/mydataset.jsonl"
+  text_field: "text"
+  train_split: 0.8
+  val_split: 0.1
+  test_split: 0.1
+  max_length: 1024
+
+model:
+  model_name: "microsoft/Phi-3-mini-4k-instruct"   # or another model you already downloaded
+  load_in_4bit: false
+  use_lora: false
+
+
+
+lora:
+  r: 8
+  alpha: 16
+  dropout: 0.05
+  target_modules: "all-linear"
+  use_dora: false
+  init_lora_weights: "gaussian"
+  # important to avoid bnb backend
+  use_rslora: false
+
+train:
+  num_train_epochs: 2
+  per_device_train_batch_size: 2
+  per_device_eval_batch_size: 2
+  gradient_accumulation_steps: 8
+  learning_rate: 0.0001
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.1
+  logging_steps: 10
+  eval_steps: 100
+  save_steps: 100
+  report_to: "wandb"
+
+
