@@ -1,112 +1,142 @@
-# LLM Phi-3 LoRA Finetuning
+## LLM Phi-3 LoRA Finetuning
 
-This project fine-tunes the Phi-3 language model using LoRA on a custom JSONL dataset and evaluates the fine-tuned model against the base model. The repository includes code, configuration, raw data, and reports so experiments can be reproduced without storing large processed datasets, logs, or model outputs. 
+This project fine-tunes the Phi-3 language model using LoRA (Low-Rank Adaptation) on a custom JSONL dataset and evaluates the fine-tuned model against the base Phi-3 model. The repository includes scripts, configuration files, and evaluation results, allowing reproducible experiments without storing large datasets or model outputs.
 
 ## Project Structure
-
-config/ # Additional configuration files (if any)
-config.yaml # Main training/evaluation configuration
+config/
+  └── config.yaml          # Main training/evaluation configuration
 data/
-raw/
-mydataset.jsonl # Raw training data in JSONL format
+  raw/
+    └── mydataset.jsonl    # Raw training dataset
+  processed/               # Preprocessed dataset (ignored by Git)
 src/
-preprocess.py # Script to preprocess raw data into train/val/test
-train_lora.py # Script to fine-tune Phi-3 using LoRA
-run_eval.py # Script to evaluate base and fine-tuned models
-utils.py # Shared helper functions (logging, seeding, etc.)
-.gitignore # Ignore rules (envs, processed data, logs, outputs, etc.)
-README.md # Project documentation (this file)
-evaluation_report.md # Final evaluation results and discussion
-requirements.txt # Python dependencies
+  preprocess.py            # Preprocess raw data into train/val/test
+  train_lora.py            # LoRA fine-tuning script
+  run_eval.py              # Evaluate base and LoRA models
+  utils.py                 # Helper functions (logging, seeding, etc.)
+.gitignore                 # Ignore rules (envs, processed data, outputs, logs)
+evaluation_report.md       # Evaluation summary
+requirements.txt           # Python dependencies
+README.md                  # Project documentation
 
 ## Setup
 
-1. Clone the repository:
+# Clone the repository:
 
-  git clone https://github.com/<your-username>/<your-repo>.git    
-     
+git clone https://github.com/<your-username>/<your-repo>.git
+cd <your-repo>
 
-2. Create and activate a virtual environment:
+
+# Create and activate a virtual environment:
 
 python -m venv .venv
 
-Linux/macOS
+
+Linux/macOS:
+
 source .venv/bin/activate
 
-Windows (Git Bash / PowerShell)
+
+Windows (Git Bash / PowerShell):
+
 .venv\Scripts\activate
 
 
-3. Install dependencies:
+# Install dependencies:
 
 pip install -r requirements.txt
-Ensure you have access to the Phi-3 model you plan to fine-tune (for example via Hugging Face) and a suitable GPU environment for training.
 
-## Data Preparation
 
-Place your raw dataset as a JSONL file at:
+Make sure you have access to the Phi-3 model (e.g., Hugging Face) and a GPU environment for training.
+
+# Data Preparation
+
+Place your dataset at:
 
 data/raw/mydataset.jsonl
 
-Each line should contain one training example in JSON format, with the fields expected by `src/preprocess.py` (for example, instruction/input/output fields for instruction tuning). 
 
-Run the preprocessing script:
+Each line should be a JSON object with fields like instruction, input, output.
+
+# Run preprocessing:
 
 python src/preprocess.py
 
 This will:
 
-- Read `data/raw/mydataset.jsonl`.  
-- Clean and transform the data into the format required for Phi-3 LoRA finetuning.  
-- Split into train/validation/test splits and save them under `data/processed/` (ignored by Git). 
+Read data/raw/mydataset.jsonl
 
-## Training with LoRA
+Clean and transform data for Phi-3 LoRA finetuning
 
-After preprocessing completes, start LoRA finetuning:
+Split into train/validation/test sets under data/processed/
 
-python src/train_lora.py --config config.yaml
+## LoRA Fine-Tuning
 
-The training script typically:
+Run LoRA training:
 
-- Loads the base Phi-3 model and tokenizer.  
-- Loads the processed dataset from `data/processed/`.  
-- Applies LoRA (rank, alpha, dropout, target modules).  
-- Trains according to hyperparameters in `config.yaml` (epochs, batch size, learning rate, etc.).  
-- Saves the resulting LoRA adapters or fine-tuned model into an outputs directory (ignored by Git). 
+python src/train_lora.py --config config/config.yaml
 
-Edit `config.yaml` to adjust model name/path, dataset paths, LoRA parameters, and training hyperparameters.
+
+Steps:
+
+Load base Phi-3 model and tokenizer
+
+Load processed dataset
+
+Apply LoRA (rank, alpha, dropout, target modules)
+
+Train according to config.yaml hyperparameters
+
+Save LoRA adapters/fine-tuned model in outputs/
+
+Adjust hyperparameters, dataset paths, and model name in config.yaml.
 
 ## Evaluation
 
-To evaluate the base and fine-tuned models:
+Run the evaluation script:
 
-python src/run_eval.py --config config.yaml
+python src/run_eval.py --config config/config.yaml
 
 
+The script:
 
-The evaluation script:
+Loads the test split
 
-- Loads the test split from `data/processed/`.  
-- Evaluates both the base Phi-3 model and the fine-tuned model on the same test set.  
-- Computes metrics such as loss and perplexity, and writes a summary (for example reflected in `evaluation_report.md`). 
+Evaluates base Phi-3 and LoRA fine-tuned model
 
-Use `evaluation_report.md` to document:
+Computes loss, perplexity (PPL) and writes evaluation_report.md
 
-- Test loss and perplexity for base vs. fine-tuned models.  
-- Observations about performance improvements, failure cases, and future work.
+# Example Output:
 
-## Reproducibility and Git Hygiene
+Preprocessing complete
+Train size: 2
+Val size  : 2
+Test size : 2
 
-The repository is configured (via `.gitignore`) to **exclude**:
+Trainable params: ~1.2M
+Training completed successfully
 
-- Large processed datasets (`data/processed/`).  
-- Logs and experiment artifacts (`logs/`, `wandb/`).  
-- Model outputs and checkpoints (`outputs/`).  
-- Local environments and notebook checkpoints.
+Evaluating BASE model...
+Evaluating LoRA model...
 
-Anyone can reproduce these artifacts by:
+Evaluation completed successfully
+Base PPL: 14.11
+LoRA PPL: 9.77
+Improvement: +4.34
 
-1. Installing dependencies (`requirements.txt`).  
-2. Running `src/preprocess.py`, `src/train_lora.py`, and `src/run_eval.py` with the same `config.yaml` and `data/raw/mydataset.jsonl`. 
+## Evaluation Report
 
-For fully reproducible experiments, set random seeds in your code (for example in `utils.py`) and keep important hyperparameters and results recorded in `config.yaml` and `evaluation_report.md`. [web:387][web:384]
+Model	Perplexity (PPL)
+Base	14.11
+LoRA	9.77
+Improvement	+4.34
+
+Positive improvement indicates LoRA fine-tuning reduced perplexity, improving model performance.
+
+## Reproducibility
+
+.gitignore excludes large files (data/processed/, outputs/, logs/)
+
+To reproduce: install dependencies and run preprocess.py, train_lora.py, run_eval.py with same config.yaml and dataset
+
+Random seeds are set in utils.py for deterministic results

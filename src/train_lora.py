@@ -1,83 +1,118 @@
 # src/train_lora.py
+import os
+os.environ["BITSANDBYTES_DISABLE"] = "1"
+
 import argparse
-import yaml
+import torch
 from datasets import load_from_disk
 from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments
 from trl import SFTTrainer
 from peft import LoraConfig, get_peft_model
-
-
-def load_config(path):
-    with open(path) as f:
-        return yaml.safe_load(f)
+from utils import load_config, set_seed
 
 
 def load_model_and_tokenizer(cfg):
+    """
+    Load base model and tokenizer for CPU/Windows.
+    Avoids bitsandbytes, 4-bit/8-bit issues.
+    """
     model_name = cfg["model"]["model_name"]
-
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # Load model fully on CPU (no device_map="auto")
-    model = AutoModelForCausalLM.from_pretrained(model_name)
+    model = AutoModelForCausalLM.from_pretrained(
+      model_name,
+      device_map=None,  # Remove device_map for CPU
+      torch_dtype=torch.float32,
+      low_cpu_mem_usage=False
+    )
+    model = model.to("cpu")  # Explicitly move to CPU
+
 
     return model, tokenizer
 
 
 def main(cfg_path):
+    # -----------------------------
+    # 1. Load config & set seed
+    # -----------------------------
     cfg = load_config(cfg_path)
+    set_seed(cfg["seed"])
 
-    train_ds = load_from_disk("data/processed/train")
-    val_ds = load_from_disk("data/processed/val")
+    # -----------------------------
+    # 2. Load datasets
+    # -----------------------------
+    train_ds = load_from_disk(cfg["data"]["train_path"])
+    val_ds = load_from_disk(cfg["data"]["val_path"])
 
+    # -----------------------------
+    # 3. Load model & tokenizer
+    # -----------------------------
     model, tokenizer = load_model_and_tokenizer(cfg)
 
-    # 1) LoRA configuration
+    # -----------------------------
+    # 4. LoRA configuration
+    # -----------------------------
+    lora_cfg = cfg["lora"]
     lora_config = LoraConfig(
-        r=8,
-        lora_alpha=16,
-        lora_dropout=0.05,
+        r=lora_cfg["r"],
+        lora_alpha=lora_cfg["alpha"],
+        lora_dropout=lora_cfg["dropout"],
+        target_modules=lora_cfg["target_modules"],
         bias="none",
         task_type="CAUSAL_LM",
-        # for attention layers; adjust if needed for your Phi-3 variant
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        inference_mode=False
     )
 
-    # 2) Wrap base model with LoRA
+    # Apply LoRA (CPU-safe, no bnb)
     model = get_peft_model(model, lora_config)
+    model.print_trainable_parameters()
 
-    # 3) Training arguments
+    # -----------------------------
+    # 5. Training arguments
+    # -----------------------------
+    train_cfg = cfg["training"]
     training_args = TrainingArguments(
-        output_dir=cfg["output_dir"],
-        num_train_epochs=cfg["train"]["num_train_epochs"],
-        per_device_train_batch_size=cfg["train"]["per_device_train_batch_size"],
-        per_device_eval_batch_size=cfg["train"]["per_device_eval_batch_size"],
-        gradient_accumulation_steps=cfg["train"]["gradient_accumulation_steps"],
-        learning_rate=cfg["train"]["learning_rate"],
-        lr_scheduler_type=cfg["train"]["lr_scheduler_type"],
-        warmup_ratio=cfg["train"]["warmup_ratio"],
-        logging_steps=cfg["train"]["logging_steps"],
-        eval_steps=cfg["train"]["eval_steps"],
-        save_strategy="no",
-        save_total_limit=1,
-        report_to="none",
+        output_dir=train_cfg["output_dir"],
+        num_train_epochs=train_cfg["num_train_epochs"],
+        per_device_train_batch_size=train_cfg["per_device_train_batch_size"],
+        per_device_eval_batch_size=train_cfg["per_device_eval_batch_size"],
+        gradient_accumulation_steps=train_cfg["gradient_accumulation_steps"],
+        learning_rate=train_cfg["learning_rate"],
+        lr_scheduler_type=train_cfg["lr_scheduler_type"],
+        warmup_ratio=train_cfg["warmup_ratio"],
+        logging_steps=train_cfg["logging_steps"],
+        eval_steps=train_cfg["eval_steps"],
+        save_strategy="no",             # Save adapters manually
+        report_to=train_cfg["report_to"],
+        fp16=False,                     # Disable FP16 (CPU)
+        bf16=False                      # Disable BF16 (CPU)
     )
 
-    # 4) Trainer
+    # -----------------------------
+    # 6. Initialize Trainer
+    # -----------------------------
     trainer = SFTTrainer(
         model=model,
         args=training_args,
         train_dataset=train_ds,
-        eval_dataset=val_ds,
+        eval_dataset=val_ds
     )
 
-    # 5) Train (on CPU, so it will be slow but consistent)
+    # -----------------------------
+    # 7. Train the model
+    # -----------------------------
     trainer.train()
 
-    # 6) Save LoRA adapters ONLY
-    model.save_pretrained(cfg["output_dir"])
-    tokenizer.save_pretrained(cfg["output_dir"])
+    # -----------------------------
+    # 8. Save LoRA adapters & tokenizer
+    # -----------------------------
+    model.config.use_cache = False  # Avoid caching issues
+    model.save_pretrained(train_cfg["output_dir"])
+    tokenizer.save_pretrained(train_cfg["output_dir"])
+
+    print("LoRA training completed successfully.")
 
 
 if __name__ == "__main__":

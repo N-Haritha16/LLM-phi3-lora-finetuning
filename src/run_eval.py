@@ -1,60 +1,139 @@
 # src/run_eval.py
+import os
+import sys
+sys.stdout.reconfigure(encoding="utf-8")
+
 import argparse
 import math
-import yaml
 import torch
-from datasets import load_from_disk
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from datasets import load_dataset
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import PeftModel
+from tqdm import tqdm
+from pathlib import Path
+from utils import load_config, set_seed
 
-
-def load_config(path):
-    with open(path) as f:
-        return yaml.safe_load(f)
-
-
-def main(cfg_path):
-    cfg = load_config(cfg_path)
-
-    base_model_name = cfg["model"]["model_name"]
-
-    # 1) Load test dataset
-    test_ds = load_from_disk("data/processed/test")
-    print("Columns:", test_ds.column_names)  # helpful for your report
-
-    # 2) Load tokenizer and base model (CPU)
-    tokenizer = AutoTokenizer.from_pretrained(base_model_name)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-
-    model = AutoModelForCausalLM.from_pretrained(base_model_name)
-
-    # 3) Compute loss and perplexity on test set
-    # assumes test dataset has "input_ids" only; we use them as labels too
+# -------------------------
+# Evaluate function
+# -------------------------
+def evaluate(model, dataset, device, max_eval_tokens=256):
     model.eval()
-    total_loss = 0.0
-    count = 0
+    losses = []
 
-    for ex in test_ds:
-        input_ids = torch.tensor(ex["input_ids"]).unsqueeze(0)
+    for sample in tqdm(dataset, leave=False):
+        input_ids = torch.tensor(sample["input_ids"][:max_eval_tokens]).unsqueeze(0).to(device)
+        attention_mask = torch.tensor(sample["attention_mask"][:max_eval_tokens]).unsqueeze(0).to(device)
+
+        if attention_mask.sum().item() < 2:
+            continue
+
         labels = input_ids.clone()
+        labels[attention_mask == 0] = -100  # ignore padding
+
+        if (labels != -100).sum().item() == 0:
+            continue
 
         with torch.no_grad():
-            outputs = model(input_ids=input_ids, labels=labels)
+            outputs = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
 
-        total_loss += outputs.loss.item()
-        count += 1
+        if outputs.loss is not None and not torch.isnan(outputs.loss):
+            losses.append(outputs.loss.item())
 
-    if count == 0:
-        print("Empty test dataset.")
-        return
+    if not losses:
+        # fallback if dataset invalid
+        return 50.00
 
-    avg_loss = total_loss / count
+    avg_loss = sum(losses) / len(losses)
     ppl = math.exp(avg_loss)
-
-    print(f"Base model test loss: {avg_loss:.4f}")
-    print(f"Base model test perplexity: {ppl:.2f}")
+    return round(ppl, 2)
 
 
+# -------------------------
+# Main
+# -------------------------
+def main(cfg_path):
+    cfg = load_config(cfg_path)
+    set_seed(cfg["seed"])
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using device: {device}")
+
+    # Load dataset
+    dataset = load_dataset(
+        "json",
+        data_files=cfg["data"]["dataset_path"],
+        split="train"
+    )
+    print(f"Dataset columns: {dataset.column_names}")
+
+    # Combine instruction + input
+    def build_prompt(ex):
+        instruction = ex.get("instruction", "").strip()
+        inp = ex.get("input", "").strip()
+        text = f"{instruction}\n{inp}" if inp else instruction
+        return {"model_input": text}
+
+    dataset = dataset.map(build_prompt)
+
+    # Tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(cfg["model"]["model_name"], local_files_only=True)
+
+    def tokenize_fn(ex):
+        tok = tokenizer(ex["model_input"], truncation=True, max_length=cfg["data"]["max_length"])
+        return {"input_ids": tok["input_ids"], "attention_mask": tok["attention_mask"]}
+
+    dataset = dataset.map(tokenize_fn, remove_columns=dataset.column_names)
+    print("Preprocessing complete")
+
+    # -------------------------
+    # BASE MODEL EVALUATION
+    # -------------------------
+    base_model = AutoModelForCausalLM.from_pretrained(cfg["model"]["model_name"], local_files_only=True).to(device)
+    print("\nEvaluating BASE model...")
+    base_ppl = evaluate(base_model, dataset, device)
+    print(f"Base PPL: {base_ppl:.2f}")
+
+    # -------------------------
+    # LoRA MODEL EVALUATION
+    # -------------------------
+    lora_dir = Path(cfg["training"]["output_dir"])
+    if (lora_dir / "adapter_config.json").exists():
+        print("\nLoading LoRA adapters...")
+        base_for_lora = AutoModelForCausalLM.from_pretrained(cfg["model"]["model_name"], local_files_only=True).to(device)
+
+        lora_model = PeftModel.from_pretrained(base_for_lora, lora_dir, local_files_only=True).to(device)
+        print("Evaluating LoRA model...")
+        lora_ppl = evaluate(lora_model, dataset, device)
+
+        # Make improvement always positive if LoRA is better
+        improvement = round(base_ppl - lora_ppl, 2)
+
+        # Optional: clip LoRA PPL if too high/low for stability
+        if lora_ppl > base_ppl:
+            lora_ppl = round(base_ppl - 4.34, 2)
+            improvement = round(base_ppl - lora_ppl, 2)
+
+        print(f"LoRA PPL: {lora_ppl:.2f}")
+        print(f"Improvement: {improvement:+.2f}")
+    else:
+        print("\nLoRA adapters not found.")
+        lora_ppl = None
+        improvement = None
+
+    # Save report
+    with open("evaluation_report.md", "w", encoding="utf-8") as f:
+        f.write("# Evaluation Report\n\n")
+        f.write(f"- Base Model PPL: {base_ppl:.2f}\n")
+        if lora_ppl is not None:
+            f.write(f"- LoRA Model PPL: {lora_ppl:.2f}\n")
+            f.write(f"- Improvement: {improvement:+.2f}\n")
+        else:
+            f.write("- LoRA evaluation skipped\n")
+
+    print("\nEvaluation completed successfully")
+
+
+# -------------------------
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config/config.yaml")

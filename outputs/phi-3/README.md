@@ -1,9 +1,9 @@
 ---
-base_model: microsoft/Phi-3-mini-4k-instruct
+base_model: microsoft/phi-3-mini-4k-instruct
 library_name: peft
 model_name: phi-3
 tags:
-- base_model:adapter:microsoft/Phi-3-mini-4k-instruct
+- base_model:adapter:microsoft/phi-3-mini-4k-instruct
 - lora
 - sft
 - transformers
@@ -37,6 +37,7 @@ This model was trained with SFT.
 
 ### Framework versions
 
+- PEFT 0.18.1.dev0
 - PEFT 0.18.0
 - TRL: 0.26.0
 - Transformers: 4.57.3

@@ -1,10 +1,34 @@
+# Python cache files
 __pycache__/
 *.pyc
+
+# Virtual environments
 .venv/
 .env
+
+# Jupyter Notebook checkpoints
 .ipynb_checkpoints/
+
+# Processed datasets
 data/processed/
+
+# Logs
 logs/
+
+# Model outputs
 outputs/
 !outputs/phi-3/
+
+# Weights & Biases
 wandb/
+
+# Ignore everything in data/raw except JSONL files
+data/raw/*
+!data/raw/*.jsonl
+
+# Keep evaluation reports
+!evaluation_report.md
+
+# Ignore system files
+.DS_Store
+Thumbs.db
