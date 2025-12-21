@@ -124,19 +124,23 @@ Base PPL: 14.11
 LoRA PPL: 9.77
 Improvement: +4.34
 
-## Evaluation Report
+## Evaluation Results
 
-Model	Perplexity (PPL)
-Base	14.11
-LoRA	9.77
-Improvement	+4.34
+Evaluating BASE model...
+Base PPL: 14.11
 
-Positive improvement indicates LoRA fine-tuning reduced perplexity, improving model performance.
+Evaluating LoRA model...
+LoRA PPL: 9.77
+
+Improvement: +4.34
+
+Lower perplexity indicates better language modeling performance.
+
+
 
 ## Reproducibility
 
-.gitignore excludes large files (data/processed/, outputs/, logs/)
-
-To reproduce: install dependencies and run preprocess.py, train_lora.py, run_eval.py with same config.yaml and dataset
-
-Random seeds are set in utils.py for deterministic results
+- All hyperparameters are controlled via `config/config.yaml`
+- Fixed random seed across preprocessing, training, and evaluation
+- No hardcoded training or evaluation parameters
+- Large datasets and model artifacts excluded from version control
