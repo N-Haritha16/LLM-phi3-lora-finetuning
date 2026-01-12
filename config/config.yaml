@@ -1,38 +1,28 @@
-# ----------------------------------------------------
 # Project
-# ----------------------------------------------------
 project_name: llm-lora-finetune
 seed: 42
 
-# ----------------------------------------------------
-# Model Configuration
-# ----------------------------------------------------
+# Model
 model:
   model_name: microsoft/phi-3-mini-4k-instruct
-  load_in_4bit: false
+  load_in_4bit: true
   dtype: auto
 
-# ----------------------------------------------------
-# Dataset & Preprocessing
-# ----------------------------------------------------
+# Dataset
 data:
   dataset_path: data/raw/mydataset.jsonl
-
   processed_dir: data/processed
   train_path: data/processed/train
   val_path: data/processed/val
   test_path: data/processed/test
-
-  max_length: 1024
+  max_length: 512              # was 1024
   train_split: 0.8
   val_split: 0.1
 
-# ----------------------------------------------------
-# LoRA Configuration
-# ----------------------------------------------------
+
 lora:
-  r: 8
-  alpha: 16
+  r: 4                         # was 8
+  alpha: 8                     # was 16
   dropout: 0.05
   target_modules:
     - q_proj
@@ -40,31 +30,22 @@ lora:
     - v_proj
     - o_proj
 
-# ----------------------------------------------------
-# Training Configuration
-# ----------------------------------------------------
-training:
-  output_dir: outputs/phi-3
 
-  num_train_epochs: 2
+# Training
+training:
+  output_dir: outputs/
+  num_train_epochs: 1          # was 3
   per_device_train_batch_size: 2
   per_device_eval_batch_size: 2
-  gradient_accumulation_steps: 8
-
-  learning_rate: 1.0e-4
-  lr_scheduler_type: cosine
-  warmup_ratio: 0.1
-
+  learning_rate: 0.0002        # keep as float
   logging_steps: 10
-  eval_steps: 100
+  save_strategy: "epoch"
+  save_total_limit: 3
+  evaluation_strategy: "epoch"
+  report_to: "wandb"
+  run_name: "phi3_lora_run_1"
 
-  report_to: none
-  fp16: true
-  bf16: false
-
-# ----------------------------------------------------
-# Evaluation Configuration
-# ----------------------------------------------------
+# Evaluation
 evaluation:
   eval_data_dir: data/processed/test
   batch_size: 2

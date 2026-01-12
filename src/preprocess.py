@@ -1,115 +1,147 @@
-# src/preprocess.py
 import argparse
 import json
 import os
+from typing import Dict, Iterable, Any, List
+
 from datasets import Dataset
 from transformers import AutoTokenizer
+
 from utils import load_config, set_seed
 
 
-def load_jsonl(path):
+def load_jsonl(path: str) -> Iterable[Dict[str, Any]]:
+    """
+    Stream a JSONL file line by line.
+
+    Args:
+        path: Path to the .jsonl file.
+
+    Yields:
+        Parsed JSON object for each line.
+    """
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
             if line.strip():
                 yield json.loads(line)
 
 
-def build_text(example):
+def build_text(example: Dict[str, Any], tokenizer: AutoTokenizer) -> str:
+    """
+    Build a chat-formatted text prompt for Phi-3 using its chat template.
+
+    Args:
+        example: A single data example containing `instruction`, optional
+                 `input`, and `output` fields.
+        tokenizer: Tokenizer for the Phi-3 model.
+
+    Returns:
+        Formatted text string using the model's chat template.
+    """
     instruction = example.get("instruction", "")
     input_text = example.get("input", "")
-    output_text = example.get("output", "")
+    output = example.get("output", "")
 
+    # Concatenate instruction and input for the user message
     if input_text:
-        return f"Instruction: {instruction}\nInput: {input_text}\nOutput: {output_text}"
+        user_content = instruction + "\n" + input_text
     else:
-        return f"Instruction: {instruction}\nOutput: {output_text}"
+        user_content = instruction
+
+    messages: List[Dict[str, str]] = [
+        {"role": "system", "content": "You are a helpful AI assistant."},
+        {"role": "user", "content": user_content},
+        {"role": "assistant", "content": output},
+    ]
+
+    text = tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=False,
+    )
+    return text
 
 
-def main(cfg_path):
-    # --------------------------------------------------
-    # 1. Load config & set seed (REPRODUCIBILITY FIX)
-    # --------------------------------------------------
+def main(cfg_path: str) -> None:
+    """
+    Preprocess the raw JSONL dataset into train/val/test splits for Phi-3 LoRA.
+
+    This script:
+      - loads the raw JSONL file,
+      - formats each example using the Phi-3 chat template,
+      - tokenizes with padding and truncation,
+      - creates an 80/10/10 train/val/test split,
+      - saves splits under `data/processed/*`.
+
+    Args:
+        cfg_path: Path to the YAML configuration file.
+    """
     cfg = load_config(cfg_path)
     set_seed(cfg["seed"])
 
-    data_cfg = cfg["data"]
-    model_cfg = cfg["model"]
+    # Load raw JSONL records
+    records = list(load_jsonl(cfg["data"]["dataset_path"]))
+    if not records:
+        raise ValueError(f"No records found in {cfg['data']['dataset_path']}")
 
-    # --------------------------------------------------
-    # 2. Load raw dataset
-    # --------------------------------------------------
-    raw_records = list(load_jsonl(data_cfg["dataset_path"]))
-
-    processed_records = [{"text": build_text(r)} for r in raw_records]
-    dataset = Dataset.from_list(processed_records)
-
-    # --------------------------------------------------
-    # 3. Load tokenizer
-    # --------------------------------------------------
-    tokenizer = AutoTokenizer.from_pretrained(model_cfg["model_name"])
+    # Initialize tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(cfg["model"]["model_name"])
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # --------------------------------------------------
-    # 4. Tokenization
-    # --------------------------------------------------
-    def tokenize_fn(batch):
+    # Build text field using chat template
+    dataset = Dataset.from_list(
+        [{"text": build_text(r, tokenizer)} for r in records]
+    )
+
+    # Tokenize
+    def tokenize_fn(batch: Dict[str, List[str]]) -> Dict[str, Any]:
         return tokenizer(
             batch["text"],
-            max_length=data_cfg["max_length"],
             truncation=True,
             padding="max_length",
+            max_length=cfg["data"]["max_length"],
         )
 
-    tokenized_ds = dataset.map(
+    tokenized = dataset.map(
         tokenize_fn,
         batched=True,
         remove_columns=dataset.column_names,
     )
 
-      # --------------------------------------------------
-    # 5. Train / Val / Test Split (SAFE FOR SMALL DATA)
-    # --------------------------------------------------
-    n = len(tokenized_ds)
-
-    if n < 3:
-        # Fallback for very small datasets (demo / testing)
-        train_ds = tokenized_ds
-        val_ds = tokenized_ds
-        test_ds = tokenized_ds
-    else:
-        split_train = data_cfg["train_split"]
-        split_val = data_cfg["val_split"]
-
-        split = tokenized_ds.train_test_split(
-            test_size=1 - split_train,
-            seed=cfg["seed"],
+    # Train/val/test split: 80/10/10
+    train_split = cfg["data"].get("train_split", 0.8)
+    val_split = cfg["data"].get("val_split", 0.1)
+    # Remaining goes to test
+    test_split = 1.0 - train_split - val_split
+    if test_split <= 0:
+        raise ValueError(
+            f"Invalid splits: train={train_split}, val={val_split}. "
+            "Their sum must be < 1.0."
         )
 
-        remaining = split["test"]
-        val_test = remaining.train_test_split(
-            test_size=1 - (split_val / (1 - split_train)),
-            seed=cfg["seed"],
-        )
+    split = tokenized.train_test_split(
+        test_size=(1.0 - train_split),
+        seed=cfg["seed"],
+    )
+    val_test = split["test"].train_test_split(
+        test_size=test_split / (val_split + test_split),
+        seed=cfg["seed"],
+    )
 
-        train_ds = split["train"]
-        val_ds = val_test["train"]
-        test_ds = val_test["test"]
+    train_ds = split["train"]
+    val_ds = val_test["train"]
+    test_ds = val_test["test"]
 
+    os.makedirs(cfg["data"]["processed_dir"], exist_ok=True)
 
-    # --------------------------------------------------
-    # 6. Save processed datasets (CONFIG-DRIVEN)
-    # --------------------------------------------------
-    os.makedirs(data_cfg["processed_dir"], exist_ok=True)
-
-    train_ds.save_to_disk(os.path.join(data_cfg["processed_dir"], "train"))
-    val_ds.save_to_disk(os.path.join(data_cfg["processed_dir"], "val"))
-    test_ds.save_to_disk(os.path.join(data_cfg["processed_dir"], "test"))
+    train_ds.save_to_disk(cfg["data"]["train_path"])
+    val_ds.save_to_disk(cfg["data"]["val_path"])
+    test_ds.save_to_disk(cfg["data"]["test_path"])
 
     print("Preprocessing complete")
-    print(f"Train size: {len(train_ds)}")
-    print(f"Val size  : {len(val_ds)}")
-    print(f"Test size : {len(test_ds)}")
+    print("Train size:", len(train_ds))
+    print("Val size  :", len(val_ds))
+    print("Test size :", len(test_ds))
 
 
 if __name__ == "__main__":

@@ -1,118 +1,132 @@
-# src/train_lora.py
-import os
-os.environ["BITSANDBYTES_DISABLE"] = "1"
-
 import argparse
+from typing import Tuple
+
 import torch
 from datasets import load_from_disk
-from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments
-from trl import SFTTrainer
 from peft import LoraConfig, get_peft_model
+from transformers import (
+    AutoTokenizer,
+    AutoModelForCausalLM,
+    TrainingArguments,
+)
+from trl import SFTTrainer
+
 from utils import load_config, set_seed
 
 
-def load_model_and_tokenizer(cfg):
+def load_model_and_tokenizer(cfg: dict) -> Tuple[AutoModelForCausalLM, AutoTokenizer]:
     """
-    Load base model and tokenizer for CPU/Windows.
-    Avoids bitsandbytes, 4-bit/8-bit issues.
+    Load the base Phi-3 model and tokenizer (CPU or GPU if available).
+
+    Args:
+        cfg: Parsed configuration dictionary.
+
+    Returns:
+        A tuple of (model, tokenizer).
     """
     model_name = cfg["model"]["model_name"]
+
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model = AutoModelForCausalLM.from_pretrained(
-      model_name,
-      device_map=None,  # Remove device_map for CPU
-      torch_dtype=torch.float32,
-      low_cpu_mem_usage=False
-    )
-    model = model.to("cpu")  # Explicitly move to CPU
+    # Decide device
+    device = "cuda" if torch.cuda.is_available() else "cpu"
 
+    # On GPU: allow 4-bit + device_map="auto"
+    # On CPU: disable 4-bit and keep model on CPU
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        load_in_4bit=cfg["model"].get("load_in_4bit", False) if device == "cuda" else False,
+        device_map="auto" if device == "cuda" else None,
+    )
+
+    if device == "cpu":
+        model = model.to("cpu")
 
     return model, tokenizer
 
 
-def main(cfg_path):
-    # -----------------------------
-    # 1. Load config & set seed
-    # -----------------------------
-    cfg = load_config(cfg_path)
-    set_seed(cfg["seed"])
+def apply_lora(model: AutoModelForCausalLM, cfg: dict) -> AutoModelForCausalLM:
+    """
+    Wrap the base model with LoRA adapters based on config.
 
-    # -----------------------------
-    # 2. Load datasets
-    # -----------------------------
-    train_ds = load_from_disk(cfg["data"]["train_path"])
-    val_ds = load_from_disk(cfg["data"]["val_path"])
+    Args:
+        model: Base causal language model.
+        cfg: Parsed configuration dictionary.
 
-    # -----------------------------
-    # 3. Load model & tokenizer
-    # -----------------------------
-    model, tokenizer = load_model_and_tokenizer(cfg)
-
-    # -----------------------------
-    # 4. LoRA configuration
-    # -----------------------------
+    Returns:
+        Model wrapped with LoRA using PEFT.
+    """
     lora_cfg = cfg["lora"]
-    lora_config = LoraConfig(
+    peft_config = LoraConfig(
         r=lora_cfg["r"],
         lora_alpha=lora_cfg["alpha"],
         lora_dropout=lora_cfg["dropout"],
         target_modules=lora_cfg["target_modules"],
-        bias="none",
         task_type="CAUSAL_LM",
-        inference_mode=False
     )
+    model = get_peft_model(model, peft_config)
+    return model
 
-    # Apply LoRA (CPU-safe, no bnb)
-    model = get_peft_model(model, lora_config)
-    model.print_trainable_parameters()
 
-    # -----------------------------
-    # 5. Training arguments
-    # -----------------------------
-    train_cfg = cfg["training"]
+def main(cfg_path: str) -> None:
+    """
+    Run LoRA fine-tuning for Phi-3 using the preprocessed dataset.
+
+    This script:
+      - loads config and sets the seed,
+      - loads preprocessed train/val datasets from disk,
+      - loads the base model and tokenizer (GPU 4-bit if available),
+      - applies LoRA configuration,
+      - runs supervised fine-tuning with SFTTrainer,
+      - saves the LoRA-adapted model and tokenizer to output_dir.
+    """
+    cfg = load_config(cfg_path)
+    set_seed(cfg["seed"])
+
+    # Load preprocessed datasets
+    train_ds = load_from_disk(cfg["data"]["train_path"])
+    val_ds = load_from_disk(cfg["data"]["val_path"])
+
+    # Load model + tokenizer and apply LoRA
+    model, tokenizer = load_model_and_tokenizer(cfg)
+    model = apply_lora(model, cfg)
+
+    # Training arguments from config
+        # Training arguments from config
+        # Training arguments from config
+    training_cfg = cfg["training"]
+    eval_strategy = training_cfg.get("evaluation_strategy", "epoch")
+
     training_args = TrainingArguments(
-        output_dir=train_cfg["output_dir"],
-        num_train_epochs=train_cfg["num_train_epochs"],
-        per_device_train_batch_size=train_cfg["per_device_train_batch_size"],
-        per_device_eval_batch_size=train_cfg["per_device_eval_batch_size"],
-        gradient_accumulation_steps=train_cfg["gradient_accumulation_steps"],
-        learning_rate=train_cfg["learning_rate"],
-        lr_scheduler_type=train_cfg["lr_scheduler_type"],
-        warmup_ratio=train_cfg["warmup_ratio"],
-        logging_steps=train_cfg["logging_steps"],
-        eval_steps=train_cfg["eval_steps"],
-        save_strategy="no",             # Save adapters manually
-        report_to=train_cfg["report_to"],
-        fp16=False,                     # Disable FP16 (CPU)
-        bf16=False                      # Disable BF16 (CPU)
+        output_dir=training_cfg["output_dir"],
+        num_train_epochs=training_cfg["num_train_epochs"],
+        per_device_train_batch_size=training_cfg["per_device_train_batch_size"],
+        per_device_eval_batch_size=training_cfg["per_device_eval_batch_size"],
+        learning_rate=float(training_cfg["learning_rate"]),  # <-- cast to float
+        logging_steps=training_cfg["logging_steps"],
+        eval_strategy=eval_strategy,
+        save_strategy=training_cfg["save_strategy"],
+        save_total_limit=training_cfg["save_total_limit"],
+        report_to=training_cfg["report_to"],
+        fp16=torch.cuda.is_available(),
     )
 
-    # -----------------------------
-    # 6. Initialize Trainer
-    # -----------------------------
     trainer = SFTTrainer(
         model=model,
         args=training_args,
         train_dataset=train_ds,
-        eval_dataset=val_ds
+        eval_dataset=val_ds,
+        processing_class=tokenizer,
     )
 
-    # -----------------------------
-    # 7. Train the model
-    # -----------------------------
     trainer.train()
 
-    # -----------------------------
-    # 8. Save LoRA adapters & tokenizer
-    # -----------------------------
-    model.config.use_cache = False  # Avoid caching issues
-    model.save_pretrained(train_cfg["output_dir"])
-    tokenizer.save_pretrained(train_cfg["output_dir"])
+    model.save_pretrained(training_cfg["output_dir"])
+    tokenizer.save_pretrained(training_cfg["output_dir"])
 
-    print("LoRA training completed successfully.")
+    print("LoRA training completed successfully")
 
 
 if __name__ == "__main__":
