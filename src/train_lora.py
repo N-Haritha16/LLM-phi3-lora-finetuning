@@ -106,7 +106,7 @@ def main(cfg_path: str) -> None:
         learning_rate=float(training_cfg["learning_rate"]),
         gradient_accumulation_steps=training_cfg.get("gradient_accumulation_steps", 1),
         logging_steps=training_cfg["logging_steps"],
-        evaluation_strategy=training_cfg.get("evaluation_strategy", "epoch"),
+        eval_strategy=training_cfg.get("evaluation_strategy", "epoch"),
         save_strategy=training_cfg["save_strategy"],      # e.g. "epoch"
         save_total_limit=training_cfg["save_total_limit"],
         report_to=training_cfg.get("report_to", "wandb"), # "wandb", "tensorboard", or "none"
