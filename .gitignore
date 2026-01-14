@@ -1,5 +1,6 @@
 # Environment
 .venv/
+.venv311_64/
 .env/
 
 # Python
@@ -9,8 +10,9 @@ __pycache__/
 # Jupyter
 .ipynb_checkpoints/
 
-# Data
+# Data (processed)
 data/processed/
+data_proc/
 
 # Outputs
 outputs/*
@@ -19,3 +21,6 @@ outputs/*
 # Logs
 logs/
 wandb/
+
+data_proc/
+outputs/

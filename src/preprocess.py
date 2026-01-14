@@ -83,6 +83,16 @@ def main(cfg_path: str) -> None:
     if not records:
         raise ValueError(f"No records found in {cfg['data']['dataset_path']}")
 
+
+
+    # OPTIONAL STRICT CHECK (uncomment if you want to enforce >=1000)
+    # if len(records) < 1000:
+    #     raise ValueError(
+    #         f"Dataset too small: {len(records)} examples found, "
+    #         "but at least 1000 are required."
+    #     )
+
+
     # Initialize tokenizer
     tokenizer = AutoTokenizer.from_pretrained(cfg["model"]["model_name"])
     if tokenizer.pad_token is None:

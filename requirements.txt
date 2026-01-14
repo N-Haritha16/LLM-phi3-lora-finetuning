@@ -1,10 +1,11 @@
+torch
 transformers
 datasets
+peft
+trl
 accelerate
 bitsandbytes
-trl
-peft
-evaluate
 wandb
 pyyaml
-torch
+tqdm
+sentencepiece
