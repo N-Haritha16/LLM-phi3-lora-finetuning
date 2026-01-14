@@ -18,10 +18,6 @@ from utils import load_config, set_seed
 def load_model_and_tokenizer(cfg: Dict[str, Any]) -> Tuple[AutoModelForCausalLM, AutoTokenizer]:
     """
     Load base model and tokenizer, with optional 4-bit QLoRA on GPU.
-
-    - If CUDA is available and cfg["model"].get("load_in_4bit", False) is True:
-      use bitsandbytes 4-bit quantization.
-    - Otherwise load in regular (half) precision on GPU, or full precision on CPU.
     """
     model_name = cfg["model"]["model_name"]
 
@@ -110,7 +106,7 @@ def main(cfg_path: str) -> None:
         save_strategy=training_cfg["save_strategy"],      # e.g. "epoch"
         save_total_limit=training_cfg["save_total_limit"],
         report_to=training_cfg.get("report_to", "wandb"), # "wandb", "tensorboard", or "none"
-        fp16=torch.cuda.is_available(),                   # mixed precision on GPU
+        fp16=False,                                       # disable AMP to avoid bfloat16 error
         bf16=False,
     )
 
@@ -119,7 +115,7 @@ def main(cfg_path: str) -> None:
         args=training_args,
         train_dataset=train_ds,
         eval_dataset=val_ds,
-        tokenizer=tokenizer,
+        # tokenizer=tokenizer,  # omitted for your TRL version
     )
 
     trainer.train()
