@@ -6,7 +6,7 @@ from typing import Dict, Iterable, Any, List
 from datasets import Dataset
 from transformers import AutoTokenizer
 
-from utils import load_config, set_seed
+from src.utils import load_config, set_seed
 
 
 def load_jsonl(path: str) -> Iterable[Dict[str, Any]]:
