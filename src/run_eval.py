@@ -7,7 +7,7 @@ from datasets import load_from_disk
 from peft import PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from utils import load_config
+from src.utils import load_config
 
 
 def evaluate(model: AutoModelForCausalLM, dataset, device: str) -> float:
@@ -24,6 +24,7 @@ def evaluate(model: AutoModelForCausalLM, dataset, device: str) -> float:
     """
     model.eval()
     losses = []
+
     for x in dataset:
         ids = torch.tensor(x["input_ids"]).unsqueeze(0).to(device)
         with torch.no_grad():
@@ -40,20 +41,38 @@ def load_models(cfg: dict, device: str) -> Tuple[AutoModelForCausalLM, AutoModel
     """
     Load the base model and the LoRA-adapted model for evaluation.
 
-    Args:
-        cfg: Parsed configuration dictionary.
-        device: Device string, e.g. "cuda" or "cpu".
-
-    Returns:
-        A tuple (base_model, lora_model).
+    This version:
+    - Loads a single base model.
+    - Wraps it with PeftModel for LoRA.
+    - Mirrors typical QLoRA-style loading (adjust flags to match your training).
     """
     model_name = cfg["model"]["model_name"]
     lora_output_dir = cfg["evaluation"]["lora_output_dir"]
 
-    base_model = AutoModelForCausalLM.from_pretrained(model_name).to(device)
+    # Mirror your training setup here. If you trained with 4‑bit / QLoRA,
+    # keep load_in_4bit=True. If not, set it to False.
+    if torch.cuda.is_available():
+        base_model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            device_map="auto",
+            load_in_4bit=True,  # set to False if training was full precision
+        )
+        lora_model = PeftModel.from_pretrained(
+            base_model,
+            lora_output_dir,
+        )
+        # Models are already on devices via device_map="auto"
+    else:
+        # Pure CPU path (slower, but avoids multi‑GPU logic)
+        base_model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            load_in_4bit=False,  # 4‑bit on CPU is usually not supported
+        ).to(device)
 
-    lora_base = AutoModelForCausalLM.from_pretrained(model_name).to(device)
-    lora_model = PeftModel.from_pretrained(lora_base, lora_output_dir).to(device)
+        lora_model = PeftModel.from_pretrained(
+            base_model,
+            lora_output_dir,
+        ).to(device)
 
     return base_model, lora_model
 
@@ -62,20 +81,20 @@ def main(cfg_path: str) -> None:
     """
     Evaluate base Phi-3 and LoRA fine-tuned model on the test split.
 
-    This script:
-      - loads config and determines device,
-      - loads the preprocessed test dataset from disk,
-      - loads the base and LoRA models,
-      - computes perplexity for both,
-      - prints base PPL, LoRA PPL, and improvement.
+    Steps:
+      - load config and determine device,
+      - load the preprocessed test dataset from disk,
+      - load the base and LoRA models,
+      - compute perplexity for both,
+      - print base PPL, LoRA PPL, and improvement.
     """
     cfg = load_config(cfg_path)
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # Load preprocessed test dataset
+    # Load preprocessed test dataset (already tokenized)
     test_ds = load_from_disk(cfg["data"]["test_path"])
 
-    # Ensure tokenizer exists (even if not used directly, for completeness)
+    # Ensure tokenizer exists (for completeness / future use)
     _ = AutoTokenizer.from_pretrained(cfg["model"]["model_name"])
 
     # Load models
