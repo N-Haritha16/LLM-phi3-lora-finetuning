@@ -2,6 +2,8 @@ project:
   project_name: llm-lora-finetune
   seed: 42
 
+seed: 42    # add this line at top level
+
 model:
   model_name: microsoft/phi-3-mini-4k-instruct
   load_in_4bit: true
@@ -29,7 +31,7 @@ lora:
 
 training:
   output_dir: outputs/phi-3
-  num_train_epochs: 0.2          # very small, just to get adapters
+  num_train_epochs: 0.2
   per_device_train_batch_size: 1
   per_device_eval_batch_size: 1
   learning_rate: 0.0002
