@@ -3,7 +3,7 @@ import json
 import random
 
 OUTPUT_PATH = "data/raw/mydataset.jsonl"
-NUM_EXAMPLES = 1200  # >= 1000
+NUM_EXAMPLES = 1001 # >= 1000
 
 
 PYTHON_INSTRUCTIONS = [
