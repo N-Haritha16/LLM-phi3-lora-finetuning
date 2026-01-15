@@ -3,7 +3,6 @@ import yaml
 import numpy as np
 import torch
 
-
 def load_config(path: str) -> dict:
     """
     Load a YAML configuration file.
