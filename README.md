@@ -1,103 +1,116 @@
 ## LLM Phi-3 LoRA Finetuning
 
-This project fine-tunes the Phi-3 language model using LoRA (Low-Rank Adaptation) on a custom JSONL dataset with at least 1,000 instruction examples and evaluates the fine-tuned model against the base Phi-3 model. The repository includes scripts, configuration files, and evaluation results, allowing reproducible experiments without storing large datasets or bulky model outputs. [file:1]
+This project fine‑tunes the Phi‑3 language model using LoRA (Low‑Rank Adaptation) on a custom JSONL dataset (≥ 1,000 instruction examples) and evaluates the fine‑tuned model against the base Phi‑3 model. The repository includes scripts, configuration files, and an evaluation flow so experiments are reproducible without checking large datasets or model weights into Git.
 
-## Project Structure
+## Project structure
 
-config/  
-  └── config.yaml          # Main training/evaluation configuration  
-data/  
-  raw/  
-    └── mydataset.jsonl    # Raw training dataset (≥ 1,000 examples)  
-  processed/               # Preprocessed dataset (ignored by Git)  
-src/  
-  preprocess.py            # Preprocess raw data into train/val/test  
-  train_lora.py            # LoRA fine-tuning script  
-  run_eval.py              # Evaluate base and LoRA models  
-  utils.py                 # Helper functions (config, seeding)  
-  inspect_val.py           # Optional inspection helper  
-.gitignore                 # Ignore rules (envs, processed data, outputs, logs)  
-evaluation_report.md       # Evaluation summary  
-requirements.txt           # Python dependencies  
-README.md                  # Project documentation  [file:1]
+config/
+  └── config.yaml          # Main training / evaluation configuration
+
+data/
+  raw/
+    └── mydataset.jsonl    # Raw instruction dataset (≥ 1,000 examples)
+  processed/               # Tokenized train/val/test splits (ignored by Git)
+
+src/
+  preprocess.py            # Preprocess raw data into train/val/test
+  train_lora.py            # LoRA fine-tuning script
+  run_eval.py              # Evaluate base vs. LoRA model
+  utils.py                 # Helper functions (config loading, seeding)
+  inspect_val.py           # Optional inspection / debugging
+
+outputs/
+  phi-3/                   # Saved LoRA adapters (ignored by Git)
+    adapter_model.safetensors
+    adapter_config.json
+
+.gitignore                 # Ignore envs, processed data, outputs, logs
+requirements.txt           # Python dependencies
+README.md                  # Project documentation
+evaluation_report.md       # Evaluation summary (to be written after runs)
+Copy_of_LLM_LoRA_finetuning.ipynb  # Colab notebook used for runs
+
+-> data/processed/ and outputs/ are created at runtime and excluded from version control to keep the repo light.
 
 ## Setup
+ Clone the repository:
 
-Clone the repository:
 
-```bash
-git clone https://github.com/<your-username>/<your-repo>.git
-cd <your-repo>
+git clone https://github.com/N-Haritha16/LLM-phi3-lora-finetuning.git
+cd LLM-phi3-lora-finetuning
 
 ## Create and activate a virtual environment:
 
+
 python -m venv .venv
 
-Linux/macOS:
+Linux/macOS: source .venv/bin/activate
+Windows (Git Bash / PowerShell): source .venv/Scripts/activate
 
-
-source .venv/bin/activate
-Windows (Git Bash / PowerShell):
-
-
-.venv\Scripts\activate
-Install dependencies:
+## Install dependencies:
 
 
 pip install -r requirements.txt
-Make sure you have access to the Phi-3 model on Hugging Face and a GPU environment for training (QLoRA-style 4-bit fine-tuning is enabled by default). 
 
-Data Preparation
+This installs PyTorch / Transformers / PEFT / Datasets and other libraries required for preprocessing, training, and evaluation.​
+
+For full training and evaluation with Phi‑3, a GPU environment (Colab/Kaggle or similar) is strongly recommended; running the full model on CPU can be very slow or unstable.​
+
+Data preparation
 Place your dataset at:
 
 text
 data/raw/mydataset.jsonl
-Each line should be a JSON object with fields like:
+Each line should be a JSON object like:
 
 json
 {"instruction": "...", "input": "...", "output": "..."}
+
 Run preprocessing:
 
+
 python src/preprocess.py --config config/config.yaml
-This will:
+This will:​
 
 Read data/raw/mydataset.jsonl.
 
-Format examples using the Phi-3 chat template via tokenizer.apply_chat_template.
+Format each example using the Phi‑3 chat template via tokenizer.apply_chat_template.
 
-Tokenize with padding/truncation and split into train/validation/test (80/10/10) under data/processed/. [file:1]
+Tokenize with padding/truncation.
 
-Example preprocessing output (sizes will depend on your dataset):
+Split into train/validation/test (e.g. 80/10/10) and save them under data/processed/ using datasets.save_to_disk.
+
+Example console output:
 
 text
-
 Preprocessing complete
 Train size: 800
 Val size  : 100
 Test size : 100
-LoRA Fine-Tuning
+LoRA fine‑tuning
+
 Run LoRA training:
 
 
 python src/train_lora.py --config config/config.yaml
-The script will:
 
-Load the base Phi-3 model and tokenizer (4-bit, device_map="auto" for GPU usage).
+## The script:​
 
-Load the processed train/val datasets from data/processed/.
+Loads the base Phi‑3 model and tokenizer (4‑bit QLoRA, device_map="auto" to use GPU if available).
 
-Apply LoRA (rank, alpha, dropout, target modules) from config/config.yaml.
+Loads the processed train/val datasets from data/processed/.
 
-Train using trl.SFTTrainer with hyperparameters defined in config/config.yaml.
+Applies LoRA configuration (rank, alpha, dropout, target modules) from config/config.yaml.
 
-Periodically save checkpoints and the final LoRA adapters in outputs/. [file:1]
+Trains using trl.SFTTrainer with hyperparameters from the config.
 
-When training.report_to in config.yaml is set to wandb or tensorboard, training metrics (loss, evaluation loss, learning rate, etc.) are logged to the chosen monitoring tool. [file:1]
+Periodically saves checkpoints and final LoRA adapters under outputs/phi-3/.
+
+If training.report_to in config.yaml is set to wandb, metrics (loss, eval loss, LR, etc.) are logged to your W&B project (for example, the run you linked).​
 
 Example training log (truncated):
 
 text
-
 Preprocessing complete
 Train size: 800
 Val size  : 100
@@ -110,21 +123,23 @@ Test size : 100
 Training completed successfully
 LoRA training completed successfully
 Evaluation
-Run the evaluation script:
+After training is done and LoRA adapters are saved:
 
-bash
+
 python src/run_eval.py --config config/config.yaml
-The script:
+
+## The script:​
 
 Loads the preprocessed test split from data/processed/test.
 
-Loads the base Phi-3 model and the LoRA-adapted model from outputs/phi-3 (or evaluation.lora_output_dir).
+Loads the base Phi‑3 model.
 
-Computes perplexity (PPL) for both models and prints the true improvement without any manual adjustment. [file:1]
+Loads the LoRA‑adapted model by combining the base model with adapters from outputs/phi-3/ (or evaluation.lora_output_dir in config).
 
-Example evaluation output (numbers are illustrative; your values will come from your actual run):
+Computes perplexity (PPL) for both models on the same test set and prints the true improvement.
 
-text
+Example evaluation output (illustrative numbers only):
+
 
 Evaluating BASE model...
 Base PPL: 18.72
@@ -133,18 +148,34 @@ Evaluating LoRA model...
 LoRA PPL: 15.43
 
 Improvement: +3.29
-Lower perplexity indicates better language modeling performance on the held-out test set. [file:1]
 
-Reproducibility
+Lower perplexity indicates better language modelling performance on the held‑out test set.
+
+If you see FileNotFoundError: Directory data/processed/test not found, re‑run preprocess.py in the same environment first to regenerate the processed splits.​
+
+## Training Logs
+
+The LoRA fine-tuning run was tracked with Weights & Biases:
+
+- W&B run: https://wandb.ai/harithanallamilli1606-patnr-network/llm-phi3-lora-finetune-colab/runs/wdgee7pa/logs?nw=nwuserharithanallamilli1606
+
+This run contains training loss, validation metrics, learning rate, and token-level accuracy logged over time.
+
+This:
+
+1. Satisfies the requirement to provide a link to the monitoring dashboard (W&B or TensorBoard).​
+
+2. Demonstrates that training completed with proper experiment tracking (your logs show full epochs with metrics and an eval step).
+
+
+## Reproducibility
+
 All hyperparameters and paths are controlled via config/config.yaml.
 
-A fixed random seed is used across preprocessing, training, and evaluation (src/utils.py#set_seed).
+A fixed random seed is used across preprocessing, training, and evaluation through src/utils.py#set_seed.
 
-No hardcoded training or evaluation parameters; all are configurable.
+No hyperparameters are hardcoded; everything is configurable.
 
-Large datasets, model artifacts, and intermediate processed data are excluded from version control via .gitignore.
+Large datasets, model artifacts, and intermediate processed data are excluded from Git using .gitignore, keeping the repo lightweight and shareable.​
 
-text
-
-undefined
-
+For a fully worked example in a GPU notebook, see the included Copy_of_LLM_LoRA_finetuning.ipynb, which mirrors this pipeline end‑to‑end in Colab and logs runs to Weights & Biases.
