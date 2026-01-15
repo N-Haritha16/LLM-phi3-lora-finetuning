@@ -16,11 +16,9 @@ data_proc/
 
 # Outputs
 outputs/*
-!outputs/phi-3/README.md
+!outputs/phi-3/
+!outputs/phi-3/*
 
 # Logs
 logs/
 wandb/
-
-data_proc/
-outputs/
